@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Bool, Int8
+from std_msgs.msg import Float32, Bool, Int8, Int32
 import minimalmodbus
 from enum import Enum
 import time
@@ -50,10 +50,10 @@ class STMCommunication(Node):
         self.gps_longitude = None
         self.gps_longitude_1 = None
         self.gps_longitude_2 = None
-        self.read_odometer = None
+        self.read_odometer = 0
         self.check_otonom = None
         self.check_otonom_stop = 0
-        
+        self.encoder_reset_done = False
 
         # Publishers
         self.gps_latitude_pub = self.create_publisher(Float32, '/stm/gps_latitude', 10)
@@ -61,7 +61,7 @@ class STMCommunication(Node):
         self.read_odometer_pub = self.create_publisher(Float32, '/stm/read_odometer', 10)
         self.check_otonom_pub = self.create_publisher(Bool, '/stm/check_otonom', 10)
         self.brake_status_pub = self.create_publisher(Bool, '/stm/brake_status', 10)
-        self.read_wheel_angle_pub = self.create_publisher(Int8, '/stm/read_wheel_angle', 10)
+        self.read_wheel_angle_pub = self.create_publisher(Int32, '/stm/read_wheel_angle', 10)
 
 
         # Subscribers
@@ -119,11 +119,6 @@ class STMCommunication(Node):
         self.get_logger().info("SAG SINYAL BITTI")
 
     def left_signal(self, x=5):
-        for _ in range(x):
-            self.send_command(Register.LEFT_TURN_SIGNAL, 1)
-            time.sleep(0.6)
-            self.send_command(Register.LEFT_TURN_SIGNAL, 0)
-            time.sleep(0.6)
         self.get_logger().info("SOL SINYAL BITTI")
 
     def r_signal_callback(self, msg):
@@ -133,6 +128,9 @@ class STMCommunication(Node):
         self.left_signal(msg.data)
 
     def publish_data(self):
+        if not self.encoder_reset_done:
+            self.send_command(Register.RESET_ENCODER, 1)
+            self.encoder_reset_done = True        
         if self.mutex == 0:
             self.mutex = 1
             self.gps_latitude_1 = self.read_data(Register.GPS_LATITUDE)
@@ -149,9 +147,9 @@ class STMCommunication(Node):
                 if self.read_wheel_angle > 32767:
                     self.read_wheel_angle -= 65536
                 if -128 <= self.read_wheel_angle <= 127:
-                    self.read_wheel_angle_pub.publish(Int8(data=self.read_wheel_angle))
+                    self.read_wheel_angle_pub.publish(Int32(data=self.read_wheel_angle))
                 else:
-                    self.get_logger().warn(f"Wheel angle out of Int8 range. {self.read_wheel_angle}")
+                    self.get_logger().warn(f"Wheel angle out of Int32 range. {self.read_wheel_angle}")
             except ValueError:
                 self.get_logger().warn("Geçersiz wheel angle değeri.")
             
